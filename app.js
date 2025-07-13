@@ -46,26 +46,35 @@ app.post('/query-embedding', async (req, res) => {
   try {
     const { query } = req.body
 
+    // Debug: Check if collection has documents
+    const totalDocs = await coll.countDocuments()
+    console.log('Total documents in collection:', totalDocs)
+    
+    // Debug: Get a sample document to see structure
+    const sampleDoc = await coll.findOne()
+    console.log('Sample document structure:', JSON.stringify(sampleDoc, null, 2))
+
     const embedding = await createEmbedding(query)
+    console.log('Query embedding length:', embedding.length)
 
     async function findSimilarDocuments(embedding) {
       try {
         
+        // Try the updated vector search syntax first
         const documents = await coll
           .aggregate([
             {
-              $search: {
-                knnBeta: {
-                  vector: embedding,
-                  path: 'overview_embedding',
-                  k: 2
-                }
+              $vectorSearch: {
+                queryVector: embedding,
+                path: 'overview_embedding',
+                numCandidates: 100,
+                limit: 2
               }
             },
-            
             {
               $project: {
-                overview: 1
+                overview: 1,
+                score: { $meta: "vectorSearchScore" }
               }
             }
           ])
@@ -73,7 +82,34 @@ app.post('/query-embedding', async (req, res) => {
 
         return documents
       } catch (err) {
-        console.error(err)
+        console.error('Vector search error:', err)
+        
+        // Fallback to knnBeta if vectorSearch fails
+        try {
+          console.log('Trying knnBeta fallback...')
+          const documents = await coll
+            .aggregate([
+              {
+                $search: {
+                  knnBeta: {
+                    vector: embedding,
+                    path: 'overview_embedding',
+                    k: 2
+                  }
+                }
+              },
+              {
+                $project: {
+                  overview: 1
+                }
+              }
+            ])
+            .toArray()
+          return documents
+        } catch (fallbackErr) {
+          console.error('Fallback knnBeta error:', fallbackErr)
+          throw fallbackErr
+        }
       }
     }
 
@@ -92,6 +128,38 @@ app.post('/query-embedding', async (req, res) => {
   }
 })
 
+app.get("/debug/collection", async (req, res) => {
+  try {
+    // Check document count
+    const totalDocs = await coll.countDocuments()
+    
+    // Get sample documents
+    const sampleDocs = await coll.find().limit(3).toArray()
+    
+    // Check indexes
+    const indexes = await coll.listIndexes().toArray()
+    
+    // Check search indexes (if available)
+    let searchIndexes = []
+    try {
+      searchIndexes = await coll.listSearchIndexes().toArray()
+    } catch (err) {
+      console.log('Search indexes not available:', err.message)
+    }
+    
+    res.status(200).json({
+      totalDocuments: totalDocs,
+      sampleDocuments: sampleDocs,
+      indexes: indexes,
+      searchIndexes: searchIndexes
+    })
+  } catch (err) {
+    res.status(500).json({
+      error: 'Debug error',
+      message: err.message
+    })
+  }
+})
 
 
 
