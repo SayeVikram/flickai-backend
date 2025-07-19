@@ -18,12 +18,6 @@ client.connect()
 const coll = client.db("FlicksAI").collection("products");
 
 
-
-
-async function connectMon(client){
-    await client.connect()
-}
-
 app.get("/", (req, res) => {
     console.log("Got info")
     res.status(200).json("Got info")
