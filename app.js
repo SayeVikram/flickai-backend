@@ -33,6 +33,7 @@ app.post("/api/movies", async (req, res) => {
     try{
         const movies = await Product.insertMany(req.body)
         res.status(200).json(movies)
+        
     }
     catch(error){
         res.status(500).json({errorMessage: error.message})
@@ -40,17 +41,27 @@ app.post("/api/movies", async (req, res) => {
 })
 
 
+app.get('/sample-one', async (req, res) => {
+  try{
+    const doc = await coll.findOne()
+    res.status(200).json(doc)
+    console.log("Successfully sent a movie down")
+  }
+  catch(error){
+    console.log(error)
+    res.status(500).json(error)
+  }
+})
+
 
 app.post('/query-embedding', async (req, res) => {
 
   try {
     const { query } = req.body
 
-    // Debug: Check if collection has documents
     const totalDocs = await coll.countDocuments()
     console.log('Total documents in collection:', totalDocs)
     
-    // Debug: Get a sample document to see structure
     const sampleDoc = await coll.findOne()
     console.log('Sample document structure:', JSON.stringify(sampleDoc, null, 2))
 
@@ -60,15 +71,15 @@ app.post('/query-embedding', async (req, res) => {
     async function findSimilarDocuments(embedding) {
       try {
         
-        // Try the updated vector search syntax first
         const documents = await coll
           .aggregate([
             {
               $vectorSearch: {
                 queryVector: embedding,
                 path: 'overview_embedding',
+                index: 'dot_product_search',
                 numCandidates: 100,
-                limit: 2
+                limit: 5
               }
             },
             {
@@ -84,13 +95,14 @@ app.post('/query-embedding', async (req, res) => {
       } catch (err) {
         console.error('Vector search error:', err)
         
-        // Fallback to knnBeta if vectorSearch fails
+
         try {
           console.log('Trying knnBeta fallback...')
           const documents = await coll
             .aggregate([
               {
                 $search: {
+                  index: 'knn_search',
                   knnBeta: {
                     vector: embedding,
                     path: 'overview_embedding',
@@ -130,16 +142,15 @@ app.post('/query-embedding', async (req, res) => {
 
 app.get("/debug/collection", async (req, res) => {
   try {
-    // Check document count
+
     const totalDocs = await coll.countDocuments()
     
-    // Get sample documents
+
     const sampleDocs = await coll.find().limit(3).toArray()
     
-    // Check indexes
+
     const indexes = await coll.listIndexes().toArray()
     
-    // Check search indexes (if available)
     let searchIndexes = []
     try {
       searchIndexes = await coll.listSearchIndexes().toArray()
